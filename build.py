@@ -101,7 +101,8 @@ JS = r"""
     hint.classList.add('off');
   });
   document.getElementById('stage').addEventListener('click',function(e){ if(e.target.closest('video,.play')) return; (e.clientX>innerWidth*0.25)?go(cur+1):go(cur-1); hint.classList.add('off') });
-  var h=parseInt((location.hash||'#1').slice(1),10); go(isNaN(h)?0:h-1,false);
+  function fromHash(){var h=parseInt((location.hash||'#1').slice(1),10); go(isNaN(h)?0:h-1,false)}
+  addEventListener('hashchange',fromHash); fromHash();
   setTimeout(function(){hint.classList.add('off')},6000);
 })();
 """
