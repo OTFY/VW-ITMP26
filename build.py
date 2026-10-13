@@ -1,0 +1,278 @@
+# -*- coding: utf-8 -*-
+"""Genera index.html: deck del short talk de Fyware en IT Market Place 2026 (VW Puebla).
+11 laminas a 1920x1080 escaladas al viewport, transiciones y entradas de texto en CSS,
+video local en la lamina 7 (y 8 cuando exista). `?print` deja las laminas estaticas para
+imprimir a PDF con Chrome headless. Mismo diseno que el PDF v4 (base: deck de Hyva)."""
+import os, subprocess, sys
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+CHROME = r"C:/Program Files/Google/Chrome/Application/chrome.exe"
+
+CSS = r"""
+@font-face{font-family:'Manrope';font-weight:800;src:url('fonts/Manrope-ExtraBold.ttf')}
+@font-face{font-family:'Manrope';font-weight:700;src:url('fonts/Manrope-Bold.ttf')}
+@font-face{font-family:'Inter';font-weight:400;src:url('fonts/Inter_18pt-Regular.ttf')}
+@font-face{font-family:'Inter';font-weight:500;src:url('fonts/Inter_18pt-Medium.ttf')}
+@font-face{font-family:'Inter';font-weight:600;src:url('fonts/Inter_18pt-SemiBold.ttf')}
+@font-face{font-family:'Inter';font-weight:700;src:url('fonts/Inter_18pt-Bold.ttf')}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+html,body{margin:0;padding:0;height:100%;background:#000;font-family:'Inter',sans-serif;overflow:hidden}
+#stage{position:fixed;left:50%;top:50%;width:1920px;height:1080px;transform:translate(-50%,-50%) scale(var(--s,1));transform-origin:center center}
+.s{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;opacity:0;pointer-events:none;transition:opacity .65s ease}
+.s.active{opacity:1;pointer-events:auto;z-index:2}
+.s.leaving{opacity:0;z-index:1}
+.dark{background:#000;color:#fff}
+.light{background:#F4F4F2;color:#121212}
+.meta{position:absolute;top:52px;left:96px;right:96px;display:flex;justify-content:space-between;font:600 14px/1 'Inter';letter-spacing:.24em;text-transform:uppercase}
+.dark .meta{color:#7a7a7a} .light .meta{color:#8a8a86}
+.foot{position:absolute;bottom:44px;left:96px;right:96px;display:flex;justify-content:space-between;font:400 15px/1 'Inter'}
+.dark .foot{color:#6a6a6a} .light .foot{color:#8a8a86}
+.eyebrow{font:600 18px/1 'Inter';letter-spacing:.26em;text-transform:uppercase}
+.dark .eyebrow{color:#2BB6D6} .light .eyebrow{color:#1B4F8C}
+h1{font:800 112px/1.0 'Manrope';letter-spacing:-.025em;margin:0}
+h1 .b{color:#2893EC} .light h1 .b{color:#1B4F8C}
+.body{font:400 32px/1.35 'Inter'} .dark .body{color:#B9B9B9} .light .body{color:#4a4a48}
+.small{font:400 19px/1.45 'Inter'} .dark .small{color:#7a7a7a} .light .small{color:#8a8a86}
+.col{position:absolute;left:96px;top:150px;width:1200px;display:flex;flex-direction:column;gap:40px}
+.num{font:800 250px/1 'Manrope';letter-spacing:-.04em}
+.card{background:#fff;border:1px solid #E2E2DE;border-radius:14px;padding:44px 44px 48px}
+.card .n{font:700 18px/1 'Inter';letter-spacing:.2em;color:#1B4F8C}
+.card h3{font:800 40px/1.1 'Manrope';letter-spacing:-.02em;margin:18px 0 14px}
+.card p{font:400 25px/1.4 'Inter';color:#4a4a48;margin:0}
+.pill{display:inline-block;border:2px solid #2BB6D6;color:#2BB6D6;border-radius:999px;padding:12px 22px;font:700 17px/1 'Inter';letter-spacing:.2em;text-transform:uppercase}
+.blk .k{font:600 14px/1 'Inter';letter-spacing:.22em;text-transform:uppercase;color:#7a7a7a;margin-bottom:12px}
+.blk .v{font:500 22px/1.35 'Inter';color:#fff} .blk .v span{color:#9a9a9a;font-weight:400}
+.step .n{font:700 22px/1 'Inter';letter-spacing:.2em;color:#2BB6D6}
+.step h3{font:800 52px/1.05 'Manrope';letter-spacing:-.02em;margin:20px 0 14px;color:#fff}
+.step p{font:400 28px/1.4 'Inter';color:#B9B9B9;margin:0 0 34px}
+.shot{border-radius:16px;overflow:hidden;border:1px solid #222;background:#000}
+.photo{position:absolute;left:1040px;top:0;width:880px;height:1080px;object-fit:cover}
+.photo-fade{position:absolute;left:1040px;top:0;width:880px;height:1080px;background:linear-gradient(90deg,#F4F4F2 0%,rgba(244,244,242,0) 22%)}
+.light .photo{filter:saturate(.85)}
+/* entradas: cada .a entra escalonado cuando la lamina esta activa */
+.a{opacity:0}
+.active .a{animation:up .8s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i,0)*130ms + 150ms)}
+.active .a.img{animation:zoom 1.4s cubic-bezier(.2,.7,.2,1) both;animation-delay:80ms}
+@keyframes up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes zoom{from{opacity:0;transform:scale(1.035)}to{opacity:1;transform:none}}
+.play{position:absolute;left:1300px;top:460px;width:160px;height:160px;border-radius:50%;border:4px solid #fff;background:rgba(0,0,0,.35);cursor:pointer;transition:opacity .3s}
+.play::after{content:'';position:absolute;left:62px;top:45px;border-left:56px solid #fff;border-top:35px solid transparent;border-bottom:35px solid transparent}
+.playing .play{opacity:0;pointer-events:none}
+video{position:absolute;left:840px;top:0;width:1080px;height:1080px;background:#000;object-fit:cover}
+.vfade{position:absolute;left:840px;top:0;width:1080px;height:1080px;background:linear-gradient(90deg,#000 0%,rgba(0,0,0,0) 30%);pointer-events:none}
+#bar{position:fixed;left:0;bottom:0;height:3px;background:#2BB6D6;width:0;transition:width .5s ease;z-index:50}
+#hint{position:fixed;right:24px;bottom:14px;font:500 12px/1 'Inter';letter-spacing:.1em;color:rgba(255,255,255,.35);z-index:50;transition:opacity 1s}
+#hint.off{opacity:0}
+/* modo impresion: todas las laminas, estaticas, una por pagina */
+@page{size:1920px 1080px;margin:0}
+body.print{overflow:visible;height:auto}
+body.print #stage{position:static;transform:none;width:1920px;height:auto}
+body.print .s{position:relative;opacity:1;pointer-events:auto;page-break-after:always;break-after:page;transition:none}
+body.print .a,body.print .active .a{opacity:1;animation:none}
+body.print video{display:none} body.print .poster{display:block}
+body.print #bar,body.print #hint{display:none}
+.poster{display:none;position:absolute;left:840px;top:0;width:1080px;height:1080px;object-fit:cover}
+"""
+
+JS = r"""
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.s')), n=slides.length, cur=-1, bar=document.getElementById('bar'), hint=document.getElementById('hint');
+  function fit(){var s=Math.min(innerWidth/1920,innerHeight/1080);document.documentElement.style.setProperty('--s',s)}
+  addEventListener('resize',fit);fit();
+  slides.forEach(function(sl){ [].slice.call(sl.querySelectorAll('.a')).forEach(function(el,i){ el.style.setProperty('--i',i) }) });
+  function stopVideo(sl){var v=sl.querySelector('video');if(v){v.pause();v.currentTime=0;sl.classList.remove('playing')}}
+  function go(i,push){
+    i=Math.max(0,Math.min(n-1,i)); if(i===cur) return;
+    if(cur>=0){var old=slides[cur];old.classList.remove('active');old.classList.add('leaving');stopVideo(old);setTimeout(function(){old.classList.remove('leaving')},700)}
+    cur=i; slides[i].classList.add('active'); bar.style.width=((i+1)/n*100)+'%';
+    if(push!==false) history.replaceState(null,'','#'+(i+1));
+    var v=slides[i].querySelector('video'); if(v) v.load();
+  }
+  function toggleVideo(){var sl=slides[cur],v=sl.querySelector('video');if(!v) return false;
+    if(v.paused){v.play().then(function(){sl.classList.add('playing')}).catch(function(){})}else{v.pause();sl.classList.remove('playing')} return true}
+  document.querySelectorAll('.play').forEach(function(p){p.addEventListener('click',function(e){e.stopPropagation();toggleVideo()})});
+  document.querySelectorAll('video').forEach(function(v){v.addEventListener('click',function(e){e.stopPropagation();toggleVideo()});v.addEventListener('ended',function(){v.closest('.s').classList.remove('playing')})});
+  addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key==='ArrowDown'){go(cur+1);e.preventDefault()}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'||e.key==='ArrowUp'){go(cur-1);e.preventDefault()}
+    else if(e.key===' '||e.key==='Enter'){ if(!toggleVideo()) go(cur+1); e.preventDefault()}
+    else if(e.key==='Home'){go(0)} else if(e.key==='End'){go(n-1)}
+    else if(e.key==='f'||e.key==='F'){ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen() }
+    hint.classList.add('off');
+  });
+  document.getElementById('stage').addEventListener('click',function(e){ if(e.target.closest('video,.play')) return; (e.clientX>innerWidth*0.25)?go(cur+1):go(cur-1); hint.classList.add('off') });
+  var h=parseInt((location.hash||'#1').slice(1),10); go(isNaN(h)?0:h-1,false);
+  setTimeout(function(){hint.classList.add('off')},6000);
+})();
+"""
+
+def meta(n):
+    return (f'<div class="meta"><span>Fyware para Volkswagen de México · IT Market Place 2026</span><span>{n:02d}</span></div>'
+            f'<div class="foot"><span>Fyware · Del manual al puesto de trabajo</span><span>fyware.com</span></div>')
+
+def video_slide(n, src, poster, pill, titulo, cuerpo, chico=None, pasos=None):
+    """Lamina oscura con video cuadrado a la derecha (poster hasta que Carlos lo arranca)."""
+    izq = f'<span class="pill a" style="align-self:flex-start">{pill}</span><h1 class="a" style="font-size:84px">{titulo}</h1>'
+    if cuerpo: izq += f'<div class="body a">{cuerpo}</div>'
+    if chico: izq += f'<div class="small a">{chico}</div>'
+    if pasos:
+        for k, (t, d) in enumerate(pasos, 1):
+            izq += (f'<div class="step a" style="margin-top:{10 if k==1 else 0}px"><div class="n">0{k}</div><h3 style="font-size:42px">{t}</h3>'
+                    f'<p style="font-size:26px;margin-bottom:0">{d}</p></div>')
+    return f'''
+<section class="s dark">{meta(n)}
+ <video src="{src}" poster="{poster}" preload="auto" playsinline></video>
+ <img class="poster" src="{poster}" alt="">
+ <div class="vfade"></div>
+ <div class="play" title="Reproducir (espacio)"></div>
+ <div class="col" style="width:720px;top:150px;gap:30px">{izq}</div>
+</section>'''
+
+slides = []
+
+# 01 Portada
+slides.append(f'''
+<section class="s dark">
+ <div style="position:absolute;left:760px;top:-80px;width:1400px;height:1400px;border-radius:50%;background:radial-gradient(circle,#163E6E 0%,#0B2140 35%,#000 68%);"></div>
+ <img class="a img" src="img/turbina.png" style="position:absolute;left:1010px;top:-20px;height:1040px;">
+ <img class="a img" src="img/quest.png" style="position:absolute;left:760px;top:430px;width:600px;">
+ <div style="position:absolute;left:0;top:0;width:1920px;height:1080px;background:linear-gradient(90deg,#000 0%,#000 36%,rgba(0,0,0,.55) 52%,rgba(0,0,0,0) 70%);"></div>
+ <img src="img/logo_w.png" style="position:absolute;left:96px;top:60px;height:34px;">
+ <div style="position:absolute;left:96px;top:330px;width:1000px;">
+   <div class="eyebrow a" style="margin-bottom:34px">IT Market Place 2026 · Industrial AI for Automotive</div>
+   <h1 class="a" style="font-size:124px;text-transform:uppercase;letter-spacing:-.03em">Del manual al<br><span class="b">puesto de trabajo</span></h1>
+   <div class="body a" style="margin-top:34px;color:#CFCFCF">IA y realidad extendida para entrenamiento autónomo.</div>
+ </div>
+ <div class="a" style="position:absolute;left:96px;bottom:70px;display:flex;gap:70px;">
+   <div class="blk"><div class="k">Presenta</div><div class="v">Carlos Franco<br><span>CEO, Fyware</span></div></div>
+   <div class="blk"><div class="k">Para</div><div class="v">Volkswagen de México<br><span>Planta Puebla · Sala Power Wall</span></div></div>
+   <div class="blk"><div class="k">Fecha</div><div class="v">21 de octubre de 2026<br><span>Short talk · 11:10 a. m.</span></div></div>
+   <div class="blk"><div class="k">Fyware</div><div class="v">+790 proyectos · +130 clientes<br><span>16 países · desde 2017</span></div></div>
+ </div>
+</section>''')
+
+# 02 Gancho: motor desarmado
+slides.append(f'''
+<section class="s dark">
+ <img class="a img" src="img/desarmado.jpg" style="position:absolute;left:760px;top:0;width:1080px;height:1080px;">
+ <div style="position:absolute;inset:0;background:linear-gradient(90deg,#000 0%,#000 30%,rgba(0,0,0,.6) 48%,rgba(0,0,0,0) 62%);"></div>
+ <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 55%,rgba(0,0,0,.85) 100%);"></div>
+ {meta(2)}
+ <div style="position:absolute;left:96px;bottom:150px;width:1500px;">
+   <div class="eyebrow a" style="margin-bottom:34px">El problema</div>
+   <h1 class="a" style="font-size:128px">Hay algo que una<br>planta nunca ve.</h1>
+ </div>
+</section>''')
+
+# 03 / 04 Problema, con foto a la derecha
+slides.append(f'''
+<section class="s light">{meta(3)}
+ <img class="photo a img" src="img/bg3.jpg"><div class="photo-fade"></div>
+ <div class="col" style="top:290px;width:900px">
+   <div class="eyebrow a">El problema</div>
+   <h1 class="a" style="font-size:96px">El conocimiento<br>vive en el<br>escritorio.<br><span class="b">El trabajo pasa<br>en las manos.</span></h1>
+ </div>
+</section>''')
+slides.append(f'''
+<section class="s light">{meta(4)}
+ <img class="photo a img" src="img/bg4.jpg"><div class="photo-fade"></div>
+ <div class="col" style="top:290px;width:900px">
+   <div class="eyebrow a">El problema</div>
+   <h1 class="a" style="font-size:96px">No falla la IA.<br><span class="b">Nunca llegó<br>a las manos<br>correctas.</span></h1>
+ </div>
+</section>''')
+
+# 05 Dato
+slides.append(f'''
+<section class="s light">{meta(5)}
+ <img class="photo a img" src="img/bg5.jpg"><div class="photo-fade"></div>
+ <div class="col" style="width:900px;gap:30px">
+   <div class="eyebrow a">El dato</div>
+   <h1 class="a" style="font-size:76px">Ejecución correcta<br>al primer intento.</h1>
+   <div class="a" style="display:flex;gap:90px;margin-top:30px;align-items:flex-end">
+     <div><div class="num" style="color:#1B4F8C;font-size:220px">100%</div><div style="font:600 28px/1.3 'Inter';margin-top:10px">con instrucción digital<br>en el puesto de trabajo</div></div>
+     <div><div class="num" style="color:#121212;font-size:220px">11%</div><div style="font:600 28px/1.3 'Inter';margin-top:10px">con el manual<br>en papel</div></div>
+   </div>
+   <div class="small a" style="margin-top:26px;max-width:860px">Prueba A/B de Fyware con un fabricante global de autopartes · dos plantas en dos países · 44 operadores · noviembre de 2024 · capacidad autodeclarada, no examen.</div>
+ </div>
+</section>''')
+
+# 06 Solucion
+slides.append(f'''
+<section class="s dark">{meta(6)}
+ <img class="a img" src="img/motor.jpg" style="position:absolute;left:1040px;top:120px;width:820px;height:820px;border-radius:20px;">
+ <img class="a img" src="img/quest.png" style="position:absolute;left:880px;top:560px;width:560px;filter:drop-shadow(0 30px 40px rgba(0,0,0,.8))">
+ <div class="col" style="width:860px;top:150px;gap:34px">
+   <div class="eyebrow a">La solución</div>
+   <h1 class="a" style="font-size:86px">Un agente de IA<br>que ya leyó la<br>documentación<br>técnica.</h1>
+   <div class="body a">Contesta en dos frases, con manual y página.<br>Si no está en el manual, lo dice.</div>
+   <div class="small a" style="margin-top:10px;max-width:720px">Nació en un programa de formación de mantenimiento aeronáutico. Aplica a cualquier manual de planta.</div>
+ </div>
+</section>''')
+
+# 07 Asi se usa: video de Quest 03 (60 s)
+slides.append(video_slide(7, "video/lamina7.mp4", "img/l7.jpg", "Captura real · 60 s", "Así se usa.", None, None,
+    pasos=[("Identifica la pieza", "El avatar la explica y la pieza se resalta en el motor."),
+           ("Pregunta en voz alta", "La IA te responde y cita el manual y la página.")]))
+
+# 08 La IA funcionando: video pendiente (video/lamina8.mp4 cuando exista)
+slides.append(video_slide(8, "video/lamina8.mp4", "img/enuso.jpg", "Captura real", "La IA<br>funcionando.",
+    "Dos minutos. Se graba en el Quest<br>y se inserta en esta lámina.",
+    "Aquí no hay música ni voz en off: se oye la pregunta y la respuesta."))
+
+# 09 Por que escala
+slides.append(f'''
+<section class="s light">{meta(9)}
+ <img class="photo a img" src="img/bg9.jpg"><div class="photo-fade"></div>
+ <div class="col" style="width:900px;gap:36px">
+   <div class="eyebrow a">Por qué escala</div>
+   <h1 class="a" style="font-size:76px">¿Escala, o es otra<br>demo bonita?</h1>
+   <div class="a" style="display:flex;flex-direction:column;gap:22px;margin-top:10px">
+     <div class="card" style="padding:30px 36px"><div class="n">1 / 3</div><h3 style="font-size:34px;margin:12px 0 8px">Usa el manual que ya existe.</h3><p style="font-size:22px">Si cambia el manual, cambia la respuesta. No hay contenido que producir.</p></div>
+     <div class="card" style="padding:30px 36px"><div class="n">2 / 3</div><h3 style="font-size:34px;margin:12px 0 8px">Se pregunta como a un compañero.</h3><p style="font-size:22px">Sin menú, sin contraseña, sin buscador. En voz alta, en el puesto.</p></div>
+     <div class="card" style="padding:30px 36px"><div class="n">3 / 3</div><h3 style="font-size:34px;margin:12px 0 8px">Corre en local.</h3><p style="font-size:22px">Funciona aunque se caiga el wifi. Nada sale de la red de la planta.</p></div>
+   </div>
+ </div>
+</section>''')
+
+# 10 Tesis
+slides.append(f'''
+<section class="s light">{meta(10)}
+ <img class="photo a img" src="img/bg10.jpg"><div class="photo-fade"></div>
+ <div class="col" style="top:250px;width:920px;gap:40px">
+   <div class="eyebrow a">La tesis</div>
+   <h1 class="a" style="font-size:88px">La IA no le quita<br>el trabajo al técnico.<br><span class="b">Le ahorra el tiempo<br>de búsqueda<br>y ejecución.</span></h1>
+   <div class="body a" style="font-size:34px">El criterio sigue siendo suyo.</div>
+ </div>
+</section>''')
+
+# 11 Cierre
+slides.append(f'''
+<section class="s dark">{meta(11)}
+ <div style="position:absolute;left:900px;top:-100px;width:1300px;height:1300px;border-radius:50%;background:radial-gradient(circle,#163E6E 0%,#0B2140 35%,#000 68%);"></div>
+ <img class="a img" src="img/quest.png" style="position:absolute;left:1000px;top:200px;width:860px;">
+ <div class="col" style="top:300px;width:900px;gap:40px">
+   <div class="eyebrow a">Pruébelo ahora</div>
+   <h1 class="a" style="font-size:104px">Del manual<br>al puesto<br>de trabajo.</h1>
+   <div class="body a" style="color:#fff;font-weight:500">Área de realidad virtual · Sala Power Wall</div>
+   <div class="small a">Al terminar la charla, los visores están listos.</div>
+ </div>
+ <img src="img/logo_w.png" style="position:absolute;left:96px;bottom:100px;height:34px;">
+</section>''')
+
+html = ('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<title>Del manual al puesto de trabajo · Fyware · IT Market Place 2026</title>'
+        '<meta name="robots" content="noindex"><style>' + CSS + '</style></head>'
+        '<body><div id="stage">' + "".join(slides) + '</div><div id="bar"></div>'
+        '<div id="hint">← → avanzar · espacio: video · F: pantalla completa</div>'
+        '<script>if(location.search.indexOf("print")>=0)document.body.classList.add("print");</script>'
+        '<script>' + JS + '</script></body></html>')
+with open(os.path.join(AQUI, "index.html"), "w", encoding="utf-8") as f: f.write(html)
+print("index.html", len(html)//1024, "KB,", len(slides), "laminas")
+
+if "--pdf" in sys.argv:
+    out = sys.argv[sys.argv.index("--pdf") + 1]
+    subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", "--virtual-time-budget=8000",
+                    f"--print-to-pdf={out}", "file:///" + os.path.join(AQUI, "index.html").replace("\\", "/") + "?print"],
+                   check=True, capture_output=True)
+    print("PDF", out)
